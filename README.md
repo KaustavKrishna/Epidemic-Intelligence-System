@@ -54,11 +54,17 @@ Visualization via Dashboard
 Installation & Setup
 
 1. Clone the repository
+   
 git clone https://github.com/KaustavKrishna/Epidemic-Intelligence-System
 cd epidemic-intelligence
+
 2. Install dependencies
+
 pip install -r requirements.txt
+
 3. Run the application
+   
 python epidemic_intelligence_model.py
-4. download and open epidemic_intelligence_website.html
+
+4. Download and open epidemic_intelligence_website.html
 
