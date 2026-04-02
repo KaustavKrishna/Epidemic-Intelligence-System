@@ -59,6 +59,6 @@ cd epidemic-intelligence
 2. Install dependencies
 pip install -r requirements.txt
 3. Run the application
-python app/app.py
+python epidemic_intelligence_model.py
 4. download and open epidemic_intelligence_website.html
 
