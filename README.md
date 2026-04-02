@@ -38,17 +38,17 @@ Features
 Technical workflow
 
 Data Collection
-      ↓
+      ->
 Data Cleaning & Preprocessing
-      ↓
+      ->
 Feature Engineering
-      ↓
+      ->
 Model Training (Linear Regression, XGBoost)
-      ↓
+      ->
 Prediction Generation
-      ↓
+      ->
 Risk Classification & Analysis
-      ↓
+      ->
 Visualization via Dashboard
 
 Installation & Setup
@@ -60,5 +60,5 @@ cd epidemic-intelligence
 pip install -r requirements.txt
 3. Run the application
 python app/app.py
-4. Open in browser
-http://127.0.0.1:5000
+4. download and open epidemic_intelligence_website.html
+
