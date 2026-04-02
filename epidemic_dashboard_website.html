@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Epidemic Intelligence Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;600;800&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:       #050a0e;
+    --panel:    #0b1520;
+    --border:   #0e2a3a;
+    --accent:   #00d4ff;
+    --danger:   #ff3b5c;
+    --warn:     #ffb700;
+    --safe:     #00e676;
+    --text:     #c8e8f5;
+    --muted:    #4a7a94;
+    --glow:     0 0 24px rgba(0,212,255,0.35);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Barlow Condensed', sans-serif;
+    overflow-x: hidden;
+    cursor: crosshair;
+  }
+
+  /* ── SCANLINE OVERLAY ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 9999;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+  }
+
+  /* ── NOISE TEXTURE ── */
+  body::after {
+    content: '';
+    position: fixed; inset: 0; z-index: 9998;
+    opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    pointer-events: none;
+  }
+
+  /* ── TOP NAV ── */
+  nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 40px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(5,10,14,0.92);
+    backdrop-filter: blur(12px);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px; letter-spacing: 3px;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .logo span { color: var(--danger); }
+  .nav-status {
+    display: flex; gap: 24px; font-size: 12px;
+    font-family: 'Share Tech Mono', monospace; color: var(--muted);
+  }
+  .pulse-dot {
+    display: inline-block; width: 7px; height: 7px;
+    border-radius: 50%; background: var(--safe);
+    margin-right: 6px;
+    animation: pulse 1.6s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(1.4)} }
+
+  /* ── HERO ── */
+  .hero {
+    padding: 80px 40px 60px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.04) 1px, transparent 1px);
+    background-size: 50px 50px;
+  }
+  .hero-ring {
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%,-50%);
+    width: 600px; height: 600px;
+    border-radius: 50%;
+    border: 1px solid rgba(0,212,255,0.08);
+    animation: ringPulse 4s infinite;
+  }
+  .hero-ring:nth-child(3) { width: 800px; height: 800px; animation-delay: 1s; }
+  .hero-ring:nth-child(4) { width: 1000px; height: 1000px; animation-delay: 2s; }
+  @keyframes ringPulse { 0%,100%{opacity:.5} 50%{opacity:.12} }
+
+  .hero-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; letter-spacing: 5px;
+    color: var(--accent); text-transform: uppercase;
+    margin-bottom: 16px;
+    position: relative;
+  }
+  h1 {
+    font-size: clamp(36px, 6vw, 76px);
+    font-weight: 800; letter-spacing: -1px;
+    line-height: 1;
+    position: relative;
+  }
+  h1 .line1 { color: var(--text); }
+  h1 .line2 {
+    color: var(--accent);
+    text-shadow: 0 0 40px rgba(0,212,255,0.6);
+  }
+  .hero-sub {
+    margin-top: 20px; font-size: 18px; font-weight: 300;
+    color: var(--muted); max-width: 580px; margin-inline: auto;
+    position: relative; line-height: 1.6;
+  }
+  .hero-badges {
+    display: flex; gap: 12px; justify-content: center;
+    margin-top: 36px; flex-wrap: wrap; position: relative;
+  }
+  .badge {
+    padding: 7px 18px; border: 1px solid var(--border);
+    border-radius: 2px; font-size: 12px; letter-spacing: 2px;
+    font-family: 'Share Tech Mono', monospace;
+    text-transform: uppercase;
+    transition: all .25s;
+  }
+  .badge:hover { border-color: var(--accent); color: var(--accent); box-shadow: var(--glow); }
+  .badge-accent { border-color: var(--accent); color: var(--accent); }
+
+  /* ── STAT CARDS ── */
+  .stats-row {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 16px; padding: 0 40px 40px;
+  }
+  .stat-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 24px 20px;
+    position: relative; overflow: hidden;
+    transition: border-color .3s;
+  }
+  .stat-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  }
+  .stat-card.danger::before  { background: var(--danger); box-shadow: 0 0 12px var(--danger); }
+  .stat-card.warn::before    { background: var(--warn);   box-shadow: 0 0 12px var(--warn); }
+  .stat-card.safe::before    { background: var(--safe);   box-shadow: 0 0 12px var(--safe); }
+  .stat-card.accent::before  { background: var(--accent); box-shadow: 0 0 12px var(--accent); }
+  .stat-card:hover { border-color: var(--accent); }
+  .stat-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px; letter-spacing: 3px; color: var(--muted);
+    text-transform: uppercase; margin-bottom: 8px;
+  }
+  .stat-value {
+    font-size: 44px; font-weight: 800; line-height: 1;
+  }
+  .stat-value.red  { color: var(--danger); text-shadow: 0 0 20px rgba(255,59,92,0.5); }
+  .stat-value.yel  { color: var(--warn);   text-shadow: 0 0 20px rgba(255,183,0,0.5); }
+  .stat-value.grn  { color: var(--safe);   text-shadow: 0 0 20px rgba(0,230,118,0.5); }
+  .stat-value.blu  { color: var(--accent);  text-shadow: 0 0 20px rgba(0,212,255,0.5); }
+  .stat-sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+  /* ── SECTIONS ── */
+  section { padding: 0 40px 60px; }
+  .section-header {
+    display: flex; align-items: baseline; gap: 16px;
+    margin-bottom: 28px; padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-header h2 {
+    font-size: 26px; font-weight: 800; letter-spacing: 1px;
+    color: var(--text);
+  }
+  .section-header .tag {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px; color: var(--accent); letter-spacing: 3px;
+  }
+
+  /* ── RISK TABLE ── */
+  .risk-table-wrap { overflow-x: auto; }
+  table {
+    width: 100%; border-collapse: collapse;
+    font-size: 14px;
+  }
+  thead th {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px; letter-spacing: 2px; color: var(--muted);
+    text-align: left; padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    text-transform: uppercase;
+  }
+  tbody tr {
+    border-bottom: 1px solid rgba(14,42,58,0.6);
+    transition: background .2s;
+  }
+  tbody tr:hover { background: rgba(0,212,255,0.04); }
+  tbody td { padding: 12px 16px; }
+  .rank-num {
+    font-family: 'Share Tech Mono', monospace;
+    color: var(--muted); font-size: 12px;
+  }
+  .country-name { font-weight: 600; font-size: 16px; }
+  .risk-pill {
+    display: inline-block; padding: 3px 12px;
+    border-radius: 2px; font-size: 11px; letter-spacing: 1px;
+    font-family: 'Share Tech Mono', monospace; font-weight: 600;
+    text-transform: uppercase;
+  }
+  .risk-high   { background: rgba(255,59,92,0.15);  color: var(--danger); border: 1px solid rgba(255,59,92,0.4); }
+  .risk-medium { background: rgba(255,183,0,0.12);  color: var(--warn);   border: 1px solid rgba(255,183,0,0.4); }
+  .risk-low    { background: rgba(0,230,118,0.10);  color: var(--safe);   border: 1px solid rgba(0,230,118,0.4); }
+
+  /* ── RISK BAR ── */
+  .risk-bar-wrap { width: 140px; }
+  .risk-bar-bg {
+    height: 4px; background: var(--border); border-radius: 2px; overflow: hidden;
+  }
+  .risk-bar-fill {
+    height: 100%; border-radius: 2px;
+    transition: width 1s ease;
+  }
+
+  /* ── FEATURE GRID ── */
+  .feature-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+  .feature-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 28px 24px;
+    transition: border-color .3s, transform .3s;
+  }
+  .feature-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 32px rgba(0,212,255,0.08);
+  }
+  .feat-icon {
+    font-size: 32px; margin-bottom: 14px;
+    display: block;
+  }
+  .feat-title {
+    font-size: 18px; font-weight: 700; margin-bottom: 8px;
+    color: var(--accent);
+  }
+  .feat-desc { font-size: 14px; color: var(--muted); line-height: 1.7; font-weight: 300; }
+  .feat-code {
+    margin-top: 14px; padding: 10px 14px;
+    background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; color: var(--accent);
+    border-radius: 2px; line-height: 1.6;
+  }
+
+  /* ── PIPELINE ── */
+  .pipeline {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    gap: 0; position: relative;
+  }
+  .pipeline::before {
+    content: '';
+    position: absolute; top: 28px; left: 8%; right: 8%;
+    height: 1px; background: var(--border);
+  }
+  .pipeline-step {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 12px; padding: 20px 10px; text-align: center;
+  }
+  .step-num {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--panel); border: 1px solid var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Share Tech Mono', monospace; font-size: 18px;
+    color: var(--accent); position: relative; z-index: 1;
+    box-shadow: var(--glow);
+    transition: all .3s;
+  }
+  .pipeline-step:hover .step-num {
+    background: var(--accent); color: var(--bg);
+    transform: scale(1.1);
+  }
+  .step-title { font-size: 13px; font-weight: 700; letter-spacing: 1px; }
+  .step-desc  { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+  /* ── CHART PANEL ── */
+  .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .chart-panel {
+    background: var(--panel); border: 1px solid var(--border);
+    padding: 20px;
+  }
+  .chart-title {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; letter-spacing: 2px; color: var(--accent);
+    margin-bottom: 16px; text-transform: uppercase;
+  }
+  .sparkline-wrap { height: 100px; display: flex; align-items: flex-end; gap: 3px; }
+  .bar {
+    flex: 1; border-radius: 1px 1px 0 0;
+    transition: height 1s ease;
+    min-width: 4px;
+  }
+  .model-compare {
+    display: flex; flex-direction: column; gap: 12px; padding-top: 8px;
+  }
+  .model-row { display: flex; align-items: center; gap: 14px; }
+  .model-name { font-size: 13px; width: 150px; font-weight: 600; }
+  .model-bar-wrap { flex: 1; height: 8px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .model-bar-fill { height: 100%; border-radius: 2px; }
+  .model-score { font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--accent); width: 50px; text-align: right; }
+
+  /* ── EARLY WARNING PANEL ── */
+  .alert-list { display: flex; flex-direction: column; gap: 12px; }
+  .alert-item {
+    background: rgba(255,59,92,0.06);
+    border: 1px solid rgba(255,59,92,0.2);
+    padding: 14px 18px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .alert-icon { font-size: 24px; flex-shrink: 0; }
+  .alert-country { font-size: 16px; font-weight: 700; }
+  .alert-detail  { font-size: 12px; color: var(--muted); }
+  .alert-z { margin-left: auto; font-family: 'Share Tech Mono', monospace; color: var(--danger); font-size: 14px; }
+
+  /* ── CTA ── */
+  .cta-section {
+    margin: 0 40px 60px;
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    padding: 48px; text-align: center;
+    position: relative; overflow: hidden;
+    box-shadow: inset 0 0 60px rgba(0,212,255,0.03);
+  }
+  .cta-section::before {
+    content: 'EPIDEMIC INTELLIGENCE';
+    position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 100px; letter-spacing: 10px; font-weight: 900;
+    color: rgba(0,212,255,0.03); white-space: nowrap;
+  }
+  .cta-section h2 {
+    font-size: 36px; font-weight: 800; margin-bottom: 12px;
+    position: relative;
+  }
+  .cta-section p {
+    color: var(--muted); font-size: 16px; margin-bottom: 28px;
+    position: relative;
+  }
+  .btn-group { display: flex; gap: 14px; justify-content: center; position: relative; }
+  .btn {
+    padding: 12px 32px; font-family: 'Barlow Condensed', sans-serif;
+    font-size: 15px; font-weight: 700; letter-spacing: 2px;
+    text-transform: uppercase; text-decoration: none;
+    cursor: pointer; border: none; transition: all .25s;
+  }
+  .btn-primary {
+    background: var(--accent); color: var(--bg);
+  }
+  .btn-primary:hover { box-shadow: var(--glow); transform: translateY(-2px); }
+  .btn-outline {
+    background: transparent; color: var(--accent);
+    border: 1px solid var(--accent);
+  }
+  .btn-outline:hover { background: rgba(0,212,255,0.1); }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 28px 40px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--muted);
+  }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .reveal {
+    animation: fadeUp .7s ease both;
+  }
+  .reveal-delay-1 { animation-delay: .1s; }
+  .reveal-delay-2 { animation-delay: .2s; }
+  .reveal-delay-3 { animation-delay: .3s; }
+
+  /* ── WORLD MAP DOTS ── */
+  .map-container {
+    background: var(--panel); border: 1px solid var(--border);
+    padding: 20px; position: relative; overflow: hidden;
+    height: 320px;
+  }
+  .map-dots {
+    position: absolute; inset: 0;
+  }
+  .map-dot {
+    position: absolute; border-radius: 50%;
+    animation: dotPulse 3s infinite;
+  }
+  @keyframes dotPulse {
+    0%,100% { transform: scale(1); opacity: .8; }
+    50%      { transform: scale(1.8); opacity: .3; }
+  }
+  .map-dot::after {
+    content: '';
+    position: absolute; inset: -4px; border-radius: 50%;
+    border: 1px solid currentColor;
+    animation: ripple 2s infinite;
+  }
+  @keyframes ripple {
+    0%   { transform: scale(1); opacity: .6; }
+    100% { transform: scale(3); opacity: 0; }
+  }
+  .map-label {
+    position: absolute; font-family: 'Share Tech Mono', monospace;
+    font-size: 9px; letter-spacing: 1px; white-space: nowrap;
+  }
+  .world-bg {
+    position: absolute; inset: 0;
+    background-image: radial-gradient(circle at 30% 50%, rgba(0,212,255,0.04) 0%, transparent 60%),
+                      radial-gradient(circle at 70% 30%, rgba(255,59,92,0.04) 0%, transparent 50%);
+  }
+
+  @media (max-width: 900px) {
+    .stats-row      { grid-template-columns: 1fr 1fr; }
+    .feature-grid   { grid-template-columns: 1fr; }
+    .pipeline       { grid-template-columns: 1fr 1fr; }
+    .chart-grid     { grid-template-columns: 1fr; }
+    nav             { padding: 12px 20px; }
+    .hero, section  { padding-left: 20px; padding-right: 20px; }
+    .stats-row      { padding-left: 20px; padding-right: 20px; }
+    .cta-section    { margin: 0 20px 40px; padding: 32px 20px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="logo">EPI<span>INTEL</span> // OUTBREAK RISK SYSTEM</div>
+  <div class="nav-status">
+    <span><span class="pulse-dot"></span>LIVE MONITORING</span>
+    <span>MODELS: ACTIVE</span>
+    <span id="clock">--:--:-- UTC</span>
+  </div>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-grid"></div>
+  <div class="hero-ring"></div>
+  <div class="hero-ring"></div>
+  <div class="hero-ring"></div>
+  <div class="hero-label reveal">[ HACKATHON PROJECT // ML + PUBLIC HEALTH ]</div>
+  <h1 class="reveal reveal-delay-1">
+    <div class="line1">EPIDEMIC</div>
+    <div class="line2">INTELLIGENCE</div>
+  </h1>
+  <p class="hero-sub reveal reveal-delay-2">
+    Predicts outbreak risk before it peaks. Powered by XGBoost, feature engineering on Johns Hopkins data, and an early-warning spike detection system.
+  </p>
+  <div class="hero-badges reveal reveal-delay-3">
+    <span class="badge badge-accent">XGBoost Model</span>
+    <span class="badge">7-Day Moving Average</span>
+    <span class="badge">Growth Rate Analysis</span>
+    <span class="badge">Spike Detection</span>
+    <span class="badge">Risk Scoring</span>
+  </div>
+</div>
+
+<!-- STAT CARDS -->
+<div class="stats-row reveal">
+  <div class="stat-card danger">
+    <div class="stat-label">High Risk Countries</div>
+    <div class="stat-value red" id="stat-high">47</div>
+    <div class="stat-sub">⬆ +3 since last week</div>
+  </div>
+  <div class="stat-card warn">
+    <div class="stat-label">Medium Risk</div>
+    <div class="stat-value yel" id="stat-med">89</div>
+    <div class="stat-sub">Monitoring active</div>
+  </div>
+  <div class="stat-card safe">
+    <div class="stat-label">Low Risk</div>
+    <div class="stat-value grn" id="stat-low">56</div>
+    <div class="stat-sub">Trend declining</div>
+  </div>
+  <div class="stat-card accent">
+    <div class="stat-label">Alerts Triggered</div>
+    <div class="stat-value blu" id="stat-alerts">214</div>
+    <div class="stat-sub">Early warnings</div>
+  </div>
+</div>
+
+<!-- HOTSPOT MAP -->
+<section>
+  <div class="section-header">
+    <h2>🌍 OUTBREAK HOTSPOT MAP</h2>
+    <span class="tag">// LIVE RISK VISUALIZATION</span>
+  </div>
+  <div class="map-container">
+    <div class="world-bg"></div>
+    <canvas id="mapCanvas" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
+    <div class="map-dots" id="mapDots"></div>
+    <div style="position:absolute;bottom:14px;right:14px;display:flex;gap:14px;font-family:'Share Tech Mono',monospace;font-size:10px;">
+      <span style="color:var(--danger)">● HIGH</span>
+      <span style="color:var(--warn)">● MEDIUM</span>
+      <span style="color:var(--safe)">● LOW</span>
+    </div>
+  </div>
+</section>
+
+<!-- RISK TABLE -->
+<section>
+  <div class="section-header">
+    <h2>🔥 TOP 10 HIGH-RISK COUNTRIES</h2>
+    <span class="tag">// RANKED BY COMPOSITE RISK SCORE</span>
+  </div>
+  <div class="risk-table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Country</th>
+          <th>Risk Level</th>
+          <th>Risk Score</th>
+          <th>7-Day MA</th>
+          <th>Growth Rate</th>
+        </tr>
+      </thead>
+      <tbody id="riskTable"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- CHARTS ROW -->
+<section>
+  <div class="section-header">
+    <h2>📊 MODEL PERFORMANCE</h2>
+    <span class="tag">// PREDICTED VS ACTUAL + MODEL COMPARISON</span>
+  </div>
+  <div class="chart-grid">
+    <div class="chart-panel">
+      <div class="chart-title">// DAILY CASE TREND (7-DAY MA)</div>
+      <div class="sparkline-wrap" id="sparkline"></div>
+      <div style="margin-top:8px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted)">
+        ▬ 7-Day Moving Average &nbsp; · &nbsp; Normalized to chart height
+      </div>
+    </div>
+    <div class="chart-panel">
+      <div class="chart-title">// MODEL ACCURACY (R² SCORE)</div>
+      <div class="model-compare" id="modelCompare"></div>
+    </div>
+  </div>
+</section>
+
+<!-- PIPELINE STEPS -->
+<section>
+  <div class="section-header">
+    <h2>⚙️ ML PIPELINE</h2>
+    <span class="tag">// END-TO-END WORKFLOW</span>
+  </div>
+  <div class="pipeline">
+    <div class="pipeline-step">
+      <div class="step-num">01</div>
+      <div class="step-title">DATA INGEST</div>
+      <div class="step-desc">JHU confirmed cases CSV, melted to long format, grouped by country</div>
+    </div>
+    <div class="pipeline-step">
+      <div class="step-num">02</div>
+      <div class="step-title">FEATURE ENG.</div>
+      <div class="step-desc">Growth rate, 7/14-day MA, doubling time, lagged autoregression</div>
+    </div>
+    <div class="pipeline-step">
+      <div class="step-num">03</div>
+      <div class="step-title">RISK SCORE</div>
+      <div class="step-desc">Weighted composite: 40% growth + 30% MA + 20% acceleration</div>
+    </div>
+    <div class="pipeline-step">
+      <div class="step-num">04</div>
+      <div class="step-title">ML MODELS</div>
+      <div class="step-desc">XGBoost, Random Forest, Linear Regression — time-aware split</div>
+    </div>
+    <div class="pipeline-step">
+      <div class="step-num">05</div>
+      <div class="step-title">EARLY WARN</div>
+      <div class="step-desc">Z-score spike detection (z &gt; 2.5) flags outbreak onset</div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURE ENGINEERING -->
+<section>
+  <div class="section-header">
+    <h2>🧠 FEATURE ENGINEERING</h2>
+    <span class="tag">// WHERE WINNERS WIN</span>
+  </div>
+  <div class="feature-grid">
+    <div class="feature-card">
+      <span class="feat-icon">📈</span>
+      <div class="feat-title">Growth Rate</div>
+      <div class="feat-desc">Percentage change in the 7-day moving average compared to 7 days prior. The strongest single predictor of outbreak trajectory.</div>
+      <div class="feat-code">growth_rate = ma_7.pct_change(7) × 100</div>
+    </div>
+    <div class="feature-card">
+      <span class="feat-icon">〰️</span>
+      <div class="feat-title">7-Day Moving Average</div>
+      <div class="feat-desc">Smooths out day-of-week reporting artifacts. Reveals the true underlying trend hidden in noisy daily counts.</div>
+      <div class="feat-code">ma_7 = daily_cases.rolling(7).mean()</div>
+    </div>
+    <div class="feature-card">
+      <span class="feat-icon">⏱️</span>
+      <div class="feat-title">Doubling Time</div>
+      <div class="feat-desc">Estimated days until cases double at current growth. Short doubling time → imminent surge. A key epidemiological metric.</div>
+      <div class="feat-code">ln(2) / ln(1 + growth_rate/100)</div>
+    </div>
+    <div class="feature-card">
+      <span class="feat-icon">🔁</span>
+      <div class="feat-title">Lag Features</div>
+      <div class="feat-desc">Autoregressive inputs: cases 1 day ago and 7 days ago. Captures the temporal dependency that makes epidemics predictable.</div>
+      <div class="feat-code">lag_1 = cases.shift(1)<br>lag_7 = cases.shift(7)</div>
+    </div>
+    <div class="feature-card">
+      <span class="feat-icon">🚀</span>
+      <div class="feat-title">Case Acceleration</div>
+      <div class="feat-desc">Second derivative of cases — rate of change of the growth rate. Detects whether an outbreak is accelerating or decelerating.</div>
+      <div class="feat-code">acceleration = growth_rate.diff()</div>
+    </div>
+    <div class="feature-card">
+      <span class="feat-icon">⚠️</span>
+      <div class="feat-title">Z-Score Spike Detection</div>
+      <div class="feat-desc">Flags anomalous spikes where the 7-day MA exceeds 2.5 standard deviations above the country's own mean. Early warning system.</div>
+      <div class="feat-code">z = (ma_7 − μ) / σ &gt; 2.5</div>
+    </div>
+  </div>
+</section>
+
+<!-- EARLY WARNING ALERTS -->
+<section>
+  <div class="section-header">
+    <h2>⚠️ EARLY WARNING ALERTS</h2>
+    <span class="tag">// SPIKE EVENTS DETECTED BY Z-SCORE</span>
+  </div>
+  <div class="alert-list" id="alertList"></div>
+</section>
+
+<!-- CTA -->
+<div class="cta-section">
+  <h2>Run the Full Pipeline</h2>
+  <p>Clone the repo, install dependencies, and generate your own interactive Plotly dashboard</p>
+  <div class="btn-group">
+    <button class="btn btn-primary" onclick="copyInstall()">📋 COPY INSTALL COMMAND</button>
+    <button class="btn btn-outline">↓ DOWNLOAD MODEL CODE</button>
+  </div>
+  <p id="copy-confirm" style="margin-top:14px;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--safe);opacity:0;transition:opacity .3s;">
+    ✓ Copied to clipboard!
+  </p>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <span>EPIDEMIC INTELLIGENCE DASHBOARD // HACKATHON 2025</span>
+  <span>DATA: JOHNS HOPKINS CSSE // MODEL: XGBOOST + RANDOM FOREST</span>
+  <span>BUILD: <span style="color:var(--accent)">PYTHON 3.11</span></span>
+</footer>
+
+<script>
+// ── UTC CLOCK ──
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toUTCString().split(' ')[4] + ' UTC';
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── MOCK DATA ──
+const countries = [
+  { name: "United States",   score: 91, label: "High",   ma: "42,100", growth: "+18.4%" },
+  { name: "India",           score: 87, label: "High",   ma: "38,550", growth: "+15.2%" },
+  { name: "Brazil",          score: 83, label: "High",   ma: "29,800", growth: "+12.7%" },
+  { name: "Germany",         score: 78, label: "High",   ma: "21,300", growth: "+9.8%"  },
+  { name: "France",          score: 74, label: "High",   ma: "17,600", growth: "+8.1%"  },
+  { name: "United Kingdom",  score: 68, label: "High",   ma: "14,200", growth: "+6.5%"  },
+  { name: "Italy",           score: 58, label: "Medium", ma: "9,800",  growth: "+3.9%"  },
+  { name: "Canada",          score: 47, label: "Medium", ma: "6,500",  growth: "+2.2%"  },
+  { name: "Australia",       score: 36, label: "Medium", ma: "3,200",  growth: "+1.1%"  },
+  { name: "New Zealand",     score: 22, label: "Low",    ma: "890",    growth: "-0.4%"  },
+];
+
+const alerts = [
+  { country: "India",         z: "4.21", detail: "Spike on 7-day MA detected — 4.2× above mean" },
+  { country: "Brazil",        z: "3.87", detail: "Rapid case acceleration following mobility surge" },
+  { country: "Germany",       z: "3.14", detail: "Growth rate jumped 18% in 72 hours" },
+  { country: "United States", z: "2.93", detail: "New variant wave — 7-day MA break-out from baseline" },
+  { country: "France",        z: "2.71", detail: "Post-holiday reporting surge exceeds seasonal norm" },
+];
+
+// ── RISK TABLE ──
+const tbody = document.getElementById('riskTable');
+countries.forEach((c, i) => {
+  const barColor = c.label === 'High' ? '#ff3b5c' : c.label === 'Medium' ? '#ffb700' : '#00e676';
+  const pillClass = 'risk-' + c.label.toLowerCase();
+  tbody.innerHTML += `
+    <tr>
+      <td class="rank-num">${String(i+1).padStart(2,'0')}</td>
+      <td class="country-name">${c.name}</td>
+      <td><span class="risk-pill ${pillClass}">${c.label}</span></td>
+      <td>
+        <div class="risk-bar-wrap">
+          <div style="font-family:'Share Tech Mono',monospace;font-size:12px;margin-bottom:4px;color:${barColor}">${c.score}</div>
+          <div class="risk-bar-bg">
+            <div class="risk-bar-fill" style="width:${c.score}%;background:${barColor}"></div>
+          </div>
+        </div>
+      </td>
+      <td style="font-family:'Share Tech Mono',monospace;font-size:13px">${c.ma}</td>
+      <td style="color:${c.growth.startsWith('+') ? 'var(--danger)' : 'var(--safe)'};font-family:'Share Tech Mono',monospace;font-size:13px">${c.growth}</td>
+    </tr>`;
+});
+
+// ── SPARKLINE ──
+const sparkData = [12,18,14,22,35,28,42,38,55,48,63,71,66,80,74,88,82,95,89,100,94,85,78,70,65,72,80,88,76,68];
+const sparkWrap = document.getElementById('sparkline');
+const maxVal = Math.max(...sparkData);
+sparkData.forEach((v, i) => {
+  const bar = document.createElement('div');
+  bar.className = 'bar';
+  const pct = (v / maxVal * 100);
+  const hue = Math.round(pct * 1.2);
+  bar.style.cssText = `height:${pct}%;background:hsl(${200 - hue},90%,55%);`;
+  sparkWrap.appendChild(bar);
+});
+
+// ── MODEL COMPARE ──
+const models = [
+  { name: "XGBoost",         r2: 0.9312, color: "#00d4ff" },
+  { name: "Random Forest",   r2: 0.8874, color: "#00e676" },
+  { name: "Linear Regression", r2: 0.7103, color: "#ffb700" },
+];
+const mc = document.getElementById('modelCompare');
+models.forEach(m => {
+  mc.innerHTML += `
+    <div class="model-row">
+      <div class="model-name">${m.name}</div>
+      <div class="model-bar-wrap">
+        <div class="model-bar-fill" style="width:${m.r2*100}%;background:${m.color}"></div>
+      </div>
+      <div class="model-score">R²=${m.r2}</div>
+    </div>`;
+});
+
+// ── ALERTS ──
+const alertList = document.getElementById('alertList');
+alerts.forEach(a => {
+  alertList.innerHTML += `
+    <div class="alert-item">
+      <span class="alert-icon">🚨</span>
+      <div>
+        <div class="alert-country">${a.country}</div>
+        <div class="alert-detail">${a.detail}</div>
+      </div>
+      <div class="alert-z">Z = ${a.z}</div>
+    </div>`;
+});
+
+// ── MAP DOTS ──
+const hotspots = [
+  { top: 28, left: 22, color: "var(--danger)",  size: 14, label: "USA" },
+  { top: 40, left: 52, color: "var(--danger)",  size: 18, label: "India" },
+  { top: 58, left: 28, color: "var(--danger)",  size: 14, label: "Brazil" },
+  { top: 24, left: 50, color: "var(--warn)",    size: 10, label: "Germany" },
+  { top: 24, left: 48, color: "var(--warn)",    size: 9,  label: "France" },
+  { top: 30, left: 80, color: "var(--warn)",    size: 11, label: "China" },
+  { top: 72, left: 82, color: "var(--safe)",    size: 8,  label: "Aus" },
+  { top: 20, left: 46, color: "var(--safe)",    size: 7,  label: "UK" },
+];
+const dotsWrap = document.getElementById('mapDots');
+hotspots.forEach((h, i) => {
+  const dot = document.createElement('div');
+  dot.className = 'map-dot';
+  dot.style.cssText = `
+    top:${h.top}%; left:${h.left}%;
+    width:${h.size}px; height:${h.size}px;
+    background:${h.color}; color:${h.color};
+    animation-delay:${i*0.4}s;
+    box-shadow: 0 0 12px ${h.color};
+  `;
+  dotsWrap.appendChild(dot);
+
+  const lbl = document.createElement('div');
+  lbl.className = 'map-label';
+  lbl.textContent = h.label;
+  lbl.style.cssText = `top:${h.top+2.5}%;left:${h.left+1.5}%;color:${h.color};`;
+  dotsWrap.appendChild(lbl);
+});
+
+// ── COPY INSTALL ──
+function copyInstall() {
+  const cmd = "pip install pandas numpy scikit-learn xgboost plotly requests && python epidemic_intelligence_model.py";
+  navigator.clipboard.writeText(cmd).catch(() => {});
+  const el = document.getElementById('copy-confirm');
+  el.style.opacity = '1';
+  setTimeout(() => el.style.opacity = '0', 2500);
+}
+
+// ── SCROLL REVEAL ──
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) e.target.style.animationPlayState = 'running';
+  });
+}, { threshold: 0.1 });
+document.querySelectorAll('.feature-card, .pipeline-step, .alert-item, .stat-card').forEach(el => {
+  el.style.animationPlayState = 'paused';
+  observer.observe(el);
+});
+</script>
+</body>
+</html>
