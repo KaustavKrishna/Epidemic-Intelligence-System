@@ -1,4 +1,6 @@
 pandas
 numpy
 json
-sklearn
+scikit-learn
+xgboost
+plotly
